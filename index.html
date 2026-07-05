@@ -718,6 +718,27 @@
     state.distinctClusters = [...clusters].sort();
     state.distinctDistricts = [...districts].sort();
     state.distinctFeederTypes = [...types].sort();
+
+    // Find the next row after the data block that already has content (e.g. a
+    // "Grand Total" formula row). New feeders must never be written into this
+    // row — doing so silently overwrites formulas and is what produces the
+    // "we found a problem with content" repair prompt in Excel.
+    const maxColIdx = Math.max(...COLUMNS.map((c) => c.idx));
+    let protectedRow = null;
+    for (let r = lastDataRow + 1; r <= lastDataRow + 50 && r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      let hasContent = false;
+      for (let c = 1; c <= maxColIdx; c++) {
+        const v = row.getCell(c).value;
+        if (v !== null && v !== undefined && v !== "") { hasContent = true; break; }
+      }
+      if (hasContent) { protectedRow = r; break; }
+    }
+    state.protectedRowNumber = protectedRow;
+    if (protectedRow) {
+      log(`Row ${protectedRow} below the data block already has content (likely a Grand Total row) — it will be protected; new feeders will be inserted above it if needed instead of overwriting it.`, "ok");
+    }
+
     log(`Weekly report: ${state.existingRows.length} existing feeders found (data rows ${state.dataStartRow}–${lastDataRow}).`, "ok");
   }
 
@@ -1131,6 +1152,37 @@
     return n !== null ? n : value;
   }
 
+  // After spliceRows shifts a protected formula row (e.g. Grand Total) down
+  // from oldRowNum to newRowNum, its formula text/refs still point at the old
+  // row numbers and old range end. This rewrites them so the sheet still adds
+  // up correctly, and drops cached results so Excel recalculates fresh.
+  function repairShiftedFormulaRow(ws, oldRowNum, newRowNum, oldRangeEnd, newRangeEnd) {
+    const maxColIdx = Math.max(...COLUMNS.map((c) => c.idx));
+    const row = ws.getRow(newRowNum);
+    const changed = [];
+    for (let c = 1; c <= maxColIdx; c++) {
+      const cell = row.getCell(c);
+      const v = cell.value;
+      if (v && typeof v === "object") {
+        let touched = false;
+        if (typeof v.formula === "string") {
+          const rewritten = v.formula.replace(new RegExp(`([A-Za-z]+)${oldRangeEnd}\\b`, "g"), `$1${newRangeEnd}`);
+          if (rewritten !== v.formula) { v.formula = rewritten; touched = true; }
+        }
+        if (typeof v.ref === "string") {
+          v.ref = v.ref.replace(new RegExp(`([A-Za-z]+)${oldRowNum}\\b`, "g"), `$1${newRowNum}`);
+        }
+        if (typeof v.sharedFormula === "string") {
+          v.sharedFormula = v.sharedFormula.replace(new RegExp(`([A-Za-z]+)${oldRowNum}\\b`, "g"), `$1${newRowNum}`);
+        }
+        if ("result" in v) delete v.result;
+        if (touched) changed.push(cell.address);
+        cell.value = v;
+      }
+    }
+    return changed;
+  }
+
   async function exportReport() {
     const exportLog = $("#exportLog");
     exportLog.style.display = "block";
@@ -1150,7 +1202,26 @@
 
     say(`Appending ${state.newRowsData.length} new feeder row(s), cloning formatting from row ${state.lastDataRow}…`);
     const styleSourceRow = ws.getRow(state.lastDataRow);
-    let nextRowNum = state.lastDataRow + 1;
+    const firstNewRow = state.lastDataRow + 1;
+    const gap = state.protectedRowNumber ? state.protectedRowNumber - firstNewRow : Infinity;
+
+    if (state.protectedRowNumber && state.newRowsData.length > gap) {
+      const shortfall = state.newRowsData.length - gap;
+      const oldProtectedRow = state.protectedRowNumber;
+      const newProtectedRow = oldProtectedRow + shortfall;
+      say(`Not enough blank rows before row ${oldProtectedRow} — inserting ${shortfall} row(s) above it and shifting it to row ${newProtectedRow}…`);
+      ws.spliceRows(oldProtectedRow, 0, ...Array.from({ length: shortfall }, () => []));
+      const oldRangeEnd = oldProtectedRow - 1;
+      const newRangeEnd = newProtectedRow - 1;
+      const changed = repairShiftedFormulaRow(ws, oldProtectedRow, newProtectedRow, oldRangeEnd, newRangeEnd);
+      if (changed.length) {
+        say(`Adjusted formula(s) in the shifted row so totals still cover all rows: ${changed.join(", ")}. Please spot-check this row after opening the file.`);
+      } else {
+        say(`Shifted row ${newProtectedRow} down but found no formulas to adjust there — please check it manually.`);
+      }
+    }
+
+    let nextRowNum = firstNewRow;
     // find first truly empty row at/after lastDataRow+1 (skip any leftover pre-styled blanks by just using them directly)
     state.newRowsData.forEach((row) => {
       const excelRow = ws.getRow(nextRowNum);
