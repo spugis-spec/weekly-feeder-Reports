@@ -8,6 +8,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <style>
   :root{
     --bg: #0a0f1a;
@@ -247,6 +250,17 @@
 
 <main>
 
+  <!-- STEP 0: SAVED REPORTS (FIREBASE) -->
+  <section class="panel" id="panelSaved">
+    <h2><span class="stepno">0</span> Saved weekly reports</h2>
+    <p class="desc">Every report you export gets saved here too. Pick last week's saved report to use as this week's starting "Weekly Report" template — no need to dig it out of email/downloads.</p>
+    <div class="actions-row" style="margin-top:0;">
+      <button class="ghost small" id="btnRefreshSaved">Refresh list</button>
+      <span class="empty-note" id="savedStatus">Connecting…</span>
+    </div>
+    <div id="savedReportsList" style="margin-top:12px;"></div>
+  </section>
+
   <!-- STEP 1: UPLOADS -->
   <section class="panel" id="panelUpload">
     <h2><span class="stepno">1</span> Load this week's files</h2>
@@ -326,6 +340,12 @@
       <label>Output filename</label>
       <input type="text" id="exportFilename" />
     </div>
+    <div class="actions-row" style="margin-top:0; margin-bottom:6px;">
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-dim); cursor:pointer;">
+        <input type="checkbox" id="chkSaveToFirebase" checked style="width:auto;" />
+        Also save this export to Firebase (so it's selectable next week)
+      </label>
+    </div>
     <div class="actions-row">
       <button class="primary" id="btnExport">Download Merged Report (.xlsx)</button>
     </div>
@@ -334,7 +354,7 @@
 
 </main>
 
-<footer>Feederwise Merge Console · runs entirely client-side · no data is uploaded anywhere</footer>
+<footer>Feederwise Merge Console · parsing happens client-side · exports optionally sync to your Firebase project</footer>
 
 <script>
 /* ============================================================
@@ -346,6 +366,47 @@
 
 (function () {
   "use strict";
+
+  // ============================================================
+  // FIREBASE SETUP
+  // ------------------------------------------------------------
+  // 1) In the Firebase console: create/open a project → Build → Firestore
+  //    Database (create in production mode) → Build → Storage (get started).
+  // 2) Project settings → General → "Your apps" → Web app → copy the config
+  //    object it gives you and paste the values below. This config is not
+  //    a secret — it just tells the browser which project to talk to;
+  //    access is controlled by your Firestore/Storage security rules.
+  // 3) Suggested starter security rules (tighten later with real auth):
+  //      Firestore:  match /weeklyReports/{doc} { allow read, write: if true; }
+  //      Storage:    match /weekly-reports/{allPaths=**} { allow read, write: if true; }
+  //    Open write like this is fine for a small internal tool but anyone
+  //    with the URL could write/delete — add Firebase Auth when you're
+  //    ready to lock it down.
+  // ============================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyD0uGGRxCVd1HQNueDkSyBoD7mpDYdJZfk",
+    authDomain: "feederwise-weekly-report.firebaseapp.com",
+    projectId: "feederwise-weekly-report",
+    storageBucket: "feederwise-weekly-report.firebasestorage.app",
+    messagingSenderId: "1089604622246",
+    appId: "1:1089604622246:web:cbde063c95e4e3cb202167",
+  };
+
+  let fbEnabled = false;
+  let db = null;
+  let storageRef = null;
+  try {
+    if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY" && window.firebase) {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+      storageRef = firebase.storage().ref();
+      fbEnabled = true;
+    }
+  } catch (e) {
+    console.error("Firebase init failed:", e);
+    fbEnabled = false;
+  }
+
 
   // ---------- Column layout of the weekly report (row 2 = headers, row 3+ = data) ----------
   // idx is the 1-based Excel column number. source describes where the value comes from.
@@ -397,6 +458,13 @@
   // Sheets in the QA/QC workbook that have no feeder-name column and should be skipped
   // when scanning for "feeder mentioned in QA/QC but missing from report" anomalies.
   const QAQC_NO_FEEDER_SHEETS = new Set([11, 12, 13, 14]);
+
+  // Sheet 15 is a master DT-alignment list that includes feeders not yet
+  // in active capture — it's expected/normal for a sheet-15 name to be
+  // absent from both the weekly report and Raw Field data (work hasn't
+  // started on it yet). So it's excluded from the "orphan name" anomaly
+  // scan below, even though it's still used for the Total Aligned DT (H) lookup.
+  const QAQC_ORPHAN_SCAN_EXCLUDE = new Set([...QAQC_NO_FEEDER_SHEETS, 15]);
 
   const NAME_COLS = ["feeder_full_name", "Feeder_name"];
   const VALUE_COLS = ["data_cleared", "building_cleared", "Total_dt_Aligned", "reported_issue"];
@@ -506,6 +574,52 @@
     return wb;
   }
 
+  // ------------------------------------------------------------
+  // Pull a "week range" token out of the Raw Field data file name
+  // so the exported report is named consistently with the week it covers.
+  // Handles things like:
+  //   RawFieldData_01-07-2026_to_07-07-2026.xlsx  -> "01-07-2026_to_07-07-2026"
+  //   Raw Field Data 01.07.2026-07.07.2026.xlsx    -> "01.07.2026-07.07.2026"
+  //   RawField_2026-07-01_2026-07-07.xlsx          -> "2026-07-01_2026-07-07"
+  //   RawField_Week27.xlsx / RawField_Wk27_2026    -> "Week27" / "Wk27_2026"
+  //   RawField_05-07-2026.xlsx (single date)       -> "05-07-2026"
+  // If nothing recognizable is found, returns null and the filename logic
+  // falls back to the previous behaviour untouched.
+  // ------------------------------------------------------------
+  function extractWeekRange(rawFileName) {
+    if (!rawFileName) return null;
+    const base = rawFileName.replace(/\.[^.]+$/, "");
+
+    // two dates separated by "to"/"-"/"_"/"–"
+    const datePattern = "\\d{1,2}[-.\\/]\\d{1,2}[-.\\/]\\d{2,4}|\\d{4}[-.\\/]\\d{1,2}[-.\\/]\\d{1,2}";
+    const rangeRe = new RegExp(`(${datePattern})\\s*(?:to|-|_|–|—)\\s*(${datePattern})`, "i");
+    const rangeMatch = base.match(rangeRe);
+    if (rangeMatch) return `${rangeMatch[1]}_to_${rangeMatch[2]}`;
+
+    // "Week 27" / "Wk27" / "Week_27_2026" style tokens
+    const weekRe = /(week|wk)[\s_-]*\d{1,2}([\s_-]*(19|20)\d{2})?/i;
+    const weekMatch = base.match(weekRe);
+    if (weekMatch) return weekMatch[0].replace(/\s+/g, "_");
+
+    // single date fallback
+    const singleRe = new RegExp(datePattern);
+    const singleMatch = base.match(singleRe);
+    if (singleMatch) return singleMatch[0];
+
+    return null;
+  }
+
+  // Rebuild the export filename whenever the template and/or raw file names
+  // are available, so the week range from the Raw Field data always wins.
+  function updateExportFilename() {
+    if (!state.templateFileName) return;
+    const baseName = state.templateFileName.replace(/\.xlsx$/i, "");
+    const weekRange = extractWeekRange(state.rawFileName);
+    $("#exportFilename").value = weekRange
+      ? `${baseName}_${weekRange}_MERGED.xlsx`
+      : `${baseName}_MERGED.xlsx`;
+  }
+
   setupDropzone("#dzWeekly", "#fileWeekly", "#dzWeeklyFile", async (file) => {
     clearLog();
     log("Reading weekly report template…");
@@ -514,7 +628,7 @@
       state.templateWorkbook = wb;
       state.templateSheet = wb.worksheets[0];
       state.templateFileName = file.name;
-      $("#exportFilename").value = file.name.replace(/\.xlsx$/i, "") + "_MERGED.xlsx";
+      updateExportFilename();
       log(`Loaded "${file.name}" — sheet "${wb.worksheets[0].name}", ${wb.worksheets[0].rowCount} rows.`, "ok");
       filesLoaded.weekly = true;
     } catch (e) {
@@ -530,6 +644,7 @@
       const wb = await readWorkbook(file);
       state.rawFileName = file.name;
       state._rawWorkbook = wb;
+      updateExportFilename();
       log(`Loaded "${file.name}" — sheet "${wb.worksheets[0].name}", ${wb.worksheets[0].rowCount} rows.`, "ok");
       filesLoaded.raw = true;
     } catch (e) {
@@ -760,7 +875,7 @@
     // data-quality anomaly: feeder named in QA/QC sheets but not found anywhere (weekly report or raw data)
     Object.entries(state.qaqcMaps).forEach(([numStr, map]) => {
       const num = parseInt(numStr, 10);
-      if (QAQC_NO_FEEDER_SHEETS.has(num)) return;
+      if (QAQC_ORPHAN_SCAN_EXCLUDE.has(num)) return;
       for (const name of map.keys()) {
         if (!state.feederIndex.has(name) && !state.rawMap.has(name)) {
           state.anomalies.push({
@@ -1053,15 +1168,116 @@
     say("Building .xlsx file…");
     const buf = await state.templateWorkbook.xlsx.writeBuffer();
     const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const filename = $("#exportFilename").value.trim() || "Feederwise_Merged_Report.xlsx";
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = $("#exportFilename").value.trim() || "Feederwise_Merged_Report.xlsx";
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
     say("Done — file downloaded.");
+
+    if ($("#chkSaveToFirebase").checked) {
+      if (!fbEnabled) {
+        say("Firebase not configured — skipped cloud save (see firebaseConfig in the source).");
+      } else {
+        try {
+          say("Saving a copy to Firebase…");
+          const weekRange = extractWeekRange(state.rawFileName);
+          const storagePath = `weekly-reports/${weekRange || "undated"}/${Date.now()}_${filename}`;
+          const fileRef = storageRef.child(storagePath);
+          await fileRef.put(blob, { contentType: blob.type });
+          const downloadURL = await fileRef.getDownloadURL();
+          await db.collection("weeklyReports").add({
+            fileName: filename,
+            weekRange: weekRange || null,
+            storagePath,
+            downloadURL,
+            feederCount: state.existingRows.length + state.newRowsData.length,
+            anomalyCount: state.anomalies.length,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          });
+          say("Saved to Firebase — it'll show up in \"Saved weekly reports\" above.");
+          loadSavedReportsList();
+        } catch (e) {
+          say("Firebase save failed: " + e.message);
+          console.error(e);
+        }
+      }
+    }
+  }
+
+  // ============================================================
+  // SAVED REPORTS (FIREBASE)
+  // ============================================================
+  function formatSavedDate(ts) {
+    if (!ts || !ts.toDate) return "";
+    const d = ts.toDate();
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) +
+      " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  }
+
+  async function loadSavedReportsList() {
+    const statusEl = $("#savedStatus");
+    const listEl = $("#savedReportsList");
+    if (!fbEnabled) {
+      statusEl.textContent = "Firebase not configured — add your project config in the source to enable cloud save/recall.";
+      listEl.innerHTML = "";
+      return;
+    }
+    statusEl.textContent = "Loading…";
+    try {
+      const snap = await db.collection("weeklyReports").orderBy("createdAt", "desc").limit(20).get();
+      listEl.innerHTML = "";
+      if (snap.empty) {
+        statusEl.textContent = "No saved reports yet — they'll appear here after your first export.";
+        return;
+      }
+      statusEl.textContent = `${snap.size} saved report(s) — most recent first.`;
+      snap.forEach((doc) => {
+        const data = doc.data();
+        const row = document.createElement("div");
+        row.className = "feeder-row";
+        row.innerHTML = `
+          <div>
+            <div class="fname">${data.fileName}</div>
+            <div class="fmeta">${formatSavedDate(data.createdAt)}${data.weekRange ? " · week " + data.weekRange : ""}${data.feederCount ? " · " + data.feederCount + " feeders" : ""}${data.anomalyCount ? " · " + data.anomalyCount + " anomalies" : ""}</div>
+          </div>
+          <button class="ghost small" data-action="use">Use as this week's Weekly Report</button>
+          <a class="ghost small" style="text-decoration:none; display:inline-flex; align-items:center;" href="${data.downloadURL}" target="_blank" rel="noopener">Download</a>
+        `;
+        row.querySelector('[data-action="use"]').addEventListener("click", () => useSavedReportAsTemplate(data));
+        listEl.appendChild(row);
+      });
+    } catch (e) {
+      statusEl.textContent = "Failed to load saved reports: " + e.message;
+      console.error(e);
+    }
+  }
+
+  async function useSavedReportAsTemplate(data) {
+    clearLog();
+    log(`Fetching "${data.fileName}" from Firebase…`);
+    try {
+      const resp = await fetch(data.downloadURL);
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const buf = await resp.arrayBuffer();
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buf);
+      state.templateWorkbook = wb;
+      state.templateSheet = wb.worksheets[0];
+      state.templateFileName = data.fileName;
+      updateExportFilename();
+      $("#dzWeeklyFile").textContent = data.fileName + " (loaded from Firebase)";
+      $("#dzWeekly").classList.add("filled");
+      filesLoaded.weekly = true;
+      checkReadyToMerge();
+      log(`Loaded "${data.fileName}" from Firebase as this week's Weekly Report — sheet "${wb.worksheets[0].name}", ${wb.worksheets[0].rowCount} rows.`, "ok");
+    } catch (e) {
+      log("Failed to load saved report from Firebase: " + e.message, "err");
+    }
   }
 
   // ============================================================
@@ -1069,6 +1285,8 @@
   // ============================================================
   $("#btnMerge").addEventListener("click", runMerge);
   $("#btnExport").addEventListener("click", exportReport);
+  $("#btnRefreshSaved").addEventListener("click", loadSavedReportsList);
+  loadSavedReportsList();
 })();
 
 </script>
