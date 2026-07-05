@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Feederwise Merge Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+  :root{
+    --bg: #0a0f1a;
+    --bg-grid: #0c1322;
+    --panel: #11192b;
+    --panel-2: #16203a;
+    --panel-3: #1b2744;
+    --border: #263457;
+    --border-soft: #1e2a47;
+    --text: #e8edf9;
+    --text-dim: #8fa0c4;
+    --text-faint: #5d6c8f;
+    --amber: #f2a93b;
+    --amber-dim: #7a5a24;
+    --teal: #38d9b9;
+    --teal-dim: #1c5f52;
+    --red: #ff6b6b;
+    --red-dim: #6e2a2a;
+    --blue: #5b8def;
+    --radius: 6px;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --display: 'Space Grotesk', ui-sans-serif, sans-serif;
+    --body: 'Inter', ui-sans-serif, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(circle at 12% 8%, rgba(56,217,185,0.05), transparent 40%),
+      radial-gradient(circle at 88% 92%, rgba(242,169,59,0.05), transparent 40%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--body);
+    min-height:100vh;
+    line-height:1.45;
+  }
+  ::selection{ background:var(--amber); color:#1a1300; }
+  a{ color:var(--teal); }
+
+  /* ---------- Circuit motif header ---------- */
+  header.top{
+    position:relative;
+    padding:28px 32px 22px;
+    border-bottom:1px solid var(--border);
+    background:var(--bg-grid);
+    overflow:hidden;
+  }
+  header.top .circuit-bg{
+    position:absolute; inset:0; opacity:0.35; pointer-events:none;
+  }
+  header.top .inner{ position:relative; z-index:1; display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+  .brand-eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--teal); margin:0 0 6px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .brand-eyebrow .dot{ width:6px; height:6px; border-radius:50%; background:var(--teal); box-shadow:0 0 8px var(--teal); animation:pulse 2s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+  h1.brand{
+    font-family:var(--display); font-weight:700; font-size:28px; margin:0;
+    letter-spacing:-0.01em;
+  }
+  h1.brand span{ color:var(--amber); }
+  .brand-sub{ color:var(--text-dim); font-size:13.5px; margin-top:6px; max-width:560px; }
+  .status-strip{ display:flex; gap:10px; flex-wrap:wrap; }
+  .led-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:9px 14px; min-width:118px;
+    font-family:var(--mono);
+  }
+  .led-card .n{ font-size:20px; font-weight:600; line-height:1; }
+  .led-card .l{ font-size:10px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.08em; margin-top:4px; }
+  .led-card.ok .n{ color:var(--teal); }
+  .led-card.warn .n{ color:var(--amber); }
+  .led-card.bad .n{ color:var(--red); }
+
+  main{ max-width:1360px; margin:0 auto; padding:28px 32px 80px; }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    padding:22px 24px; margin-bottom:22px;
+  }
+  .panel h2{
+    font-family:var(--display); font-size:15px; margin:0 0 4px; text-transform:uppercase; letter-spacing:.06em;
+    display:flex; align-items:center; gap:10px;
+  }
+  .panel h2 .stepno{
+    font-family:var(--mono); font-size:11px; color:var(--bg); background:var(--amber);
+    width:20px;height:20px; border-radius:4px; display:inline-flex; align-items:center; justify-content:center;
+  }
+  .panel .desc{ color:var(--text-dim); font-size:13px; margin:0 0 18px; }
+  .panel.disabled{ opacity:0.4; pointer-events:none; }
+
+  /* upload zones */
+  .upload-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; }
+  .dropzone{
+    border:1.5px dashed var(--border); border-radius:8px; padding:20px; text-align:center;
+    background:var(--panel-2); cursor:pointer; transition:.15s border-color, .15s background;
+    position:relative;
+  }
+  .dropzone:hover, .dropzone.drag{ border-color:var(--teal); background:var(--panel-3); }
+  .dropzone.filled{ border-style:solid; border-color:var(--teal-dim); }
+  .dropzone input{ display:none; }
+  .dz-icon{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); margin-bottom:8px; }
+  .dz-title{ font-weight:600; font-size:14px; margin-bottom:4px; }
+  .dz-file{ font-family:var(--mono); font-size:11.5px; color:var(--teal); word-break:break-all; margin-top:8px; }
+  .dz-hint{ font-size:11.5px; color:var(--text-faint); margin-top:4px; }
+
+  button{
+    font-family:var(--body); font-weight:600; font-size:13.5px; cursor:pointer;
+    border-radius:6px; border:1px solid transparent; padding:10px 18px;
+    transition:.12s transform, .12s background;
+  }
+  button:active{ transform:scale(0.98); }
+  button.primary{ background:var(--amber); color:#1a1300; }
+  button.primary:hover{ background:#ffb94f; }
+  button.ghost{ background:transparent; color:var(--text); border-color:var(--border); }
+  button.ghost:hover{ border-color:var(--teal); color:var(--teal); }
+  button.danger{ background:transparent; color:var(--red); border-color:var(--red-dim); }
+  button.danger:hover{ background:rgba(255,107,107,0.08); }
+  button.small{ padding:6px 12px; font-size:12px; }
+  button:disabled{ opacity:.35; cursor:not-allowed; }
+
+  .actions-row{ display:flex; gap:12px; margin-top:18px; flex-wrap:wrap; align-items:center; }
+
+  .log{
+    font-family:var(--mono); font-size:12px; background:#080c15; border:1px solid var(--border-soft);
+    border-radius:6px; padding:12px 14px; max-height:180px; overflow-y:auto; color:var(--text-dim);
+    white-space:pre-wrap;
+  }
+  .log .ok{ color:var(--teal); }
+  .log .warn{ color:var(--amber); }
+  .log .err{ color:var(--red); }
+
+  /* new feeders review */
+  .feeder-row{
+    display:flex; align-items:center; gap:14px; padding:12px 14px; border:1px solid var(--border-soft);
+    border-radius:6px; margin-bottom:8px; background:var(--panel-2); flex-wrap:wrap;
+  }
+  .feeder-row .fname{ font-family:var(--mono); font-size:13px; flex:1; min-width:220px; }
+  .feeder-row .fmeta{ font-size:11px; color:var(--text-faint); font-family:var(--mono); }
+  .badge{
+    font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.06em;
+    padding:3px 8px; border-radius:20px; white-space:nowrap;
+  }
+  .badge.pending{ background:rgba(242,169,59,0.12); color:var(--amber); border:1px solid var(--amber-dim); }
+  .badge.added{ background:rgba(56,217,185,0.12); color:var(--teal); border:1px solid var(--teal-dim); }
+  .badge.discarded{ background:rgba(255,107,107,0.1); color:var(--red); border:1px solid var(--red-dim); }
+
+  .inline-form{
+    width:100%; margin-top:10px; padding-top:10px; border-top:1px dashed var(--border);
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px;
+  }
+  .field label{ display:block; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint); margin-bottom:4px; }
+  .field input, .field select{
+    width:100%; background:var(--panel); border:1px solid var(--border); color:var(--text);
+    border-radius:5px; padding:8px 10px; font-size:13px; font-family:var(--body);
+  }
+  .field input:focus, .field select:focus{ outline:none; border-color:var(--teal); }
+
+  /* table */
+  .table-wrap{ overflow:auto; max-height:640px; border:1px solid var(--border); border-radius:8px; }
+  table.grid{ border-collapse:collapse; width:max-content; min-width:100%; font-family:var(--mono); font-size:12px; }
+  table.grid th{
+    position:sticky; top:0; background:var(--panel-3); color:var(--text-dim); z-index:2;
+    padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); border-right:1px solid var(--border-soft);
+    font-weight:500; white-space:nowrap; font-size:10.5px; text-transform:uppercase; letter-spacing:.03em;
+  }
+  table.grid th.group1{ position:sticky; left:0; z-index:3; }
+  table.grid td{
+    padding:6px 10px; border-bottom:1px solid var(--border-soft); border-right:1px solid #17203a;
+    white-space:nowrap; color:var(--text);
+  }
+  table.grid td[contenteditable="true"]{ cursor:text; }
+  table.grid td[contenteditable="true"]:focus{ outline:2px solid var(--teal); outline-offset:-2px; background:var(--panel-3); }
+  table.grid td.sticky-col{ position:sticky; left:0; background:var(--panel); z-index:1; font-weight:600; }
+  table.grid tr.new-row td{ background:rgba(56,217,185,0.05); }
+  table.grid tr.new-row td.sticky-col{ background:#0f2622; }
+  table.grid td.anomaly{ color:var(--red); background:rgba(255,107,107,0.08); }
+  table.grid td.edited{ box-shadow:inset 0 0 0 1px var(--amber); }
+  table.grid tr:hover td{ background:var(--panel-3); }
+  table.grid tr:hover td.sticky-col{ background:#1b2744; }
+
+  .toolbar{ display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+  .toolbar input[type=text]{
+    background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:6px;
+    padding:9px 12px; font-size:13px; font-family:var(--body); min-width:240px;
+  }
+  .legend{ display:flex; gap:16px; font-size:11.5px; color:var(--text-dim); flex-wrap:wrap; margin-left:auto; }
+  .legend span{ display:inline-flex; align-items:center; gap:6px; }
+  .swatch{ width:10px; height:10px; border-radius:2px; display:inline-block; }
+
+  .anomaly-list{ display:flex; flex-direction:column; gap:6px; }
+  .anomaly-item{
+    font-family:var(--mono); font-size:12px; padding:8px 12px; border-radius:5px;
+    background:rgba(255,107,107,0.06); border:1px solid var(--red-dim); color:var(--text-dim);
+  }
+  .anomaly-item b{ color:var(--red); }
+
+  footer{ text-align:center; padding:30px; color:var(--text-faint); font-size:12px; font-family:var(--mono); }
+
+  .empty-note{ color:var(--text-faint); font-size:13px; font-style:italic; }
+
+  @media (max-width:720px){
+    header.top{ padding:20px; }
+    main{ padding:20px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <svg class="circuit-bg" viewBox="0 0 1400 160" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <g stroke="#38d9b9" stroke-width="1" fill="none">
+      <path d="M0 40 H260 V90 H520 V20 H780 V120 H1040 V60 H1400" opacity="0.5"/>
+      <path d="M0 130 H180 V70 H460 V150 H900 V40 H1180 V100 H1400" opacity="0.3"/>
+    </g>
+    <g fill="#f2a93b">
+      <circle cx="260" cy="40" r="3"/><circle cx="520" cy="90" r="3"/><circle cx="780" cy="20" r="3"/>
+      <circle cx="1040" cy="120" r="3"/><circle cx="180" cy="130" r="3"/><circle cx="460" cy="70" r="3"/>
+      <circle cx="900" cy="150" r="3"/><circle cx="1180" cy="40" r="3"/>
+    </g>
+  </svg>
+  <div class="inner">
+    <div>
+      <p class="brand-eyebrow"><span class="dot"></span> GIS Enumeration &amp; QA/QC Ops</p>
+      <h1 class="brand">Feeder<span>wise</span> Merge Console</h1>
+      <p class="brand-sub">Merge Raw Field Cloud data and QA/QC clearance data into your weekly Feederwise GIS Enumeration Impact Report — with new-feeder discovery, anomaly flags, and a fully editable final grid.</p>
+    </div>
+    <div class="status-strip" id="statusStrip">
+      <div class="led-card"><div class="n" id="stMatched">–</div><div class="l">Matched Feeders</div></div>
+      <div class="led-card warn"><div class="n" id="stNew">–</div><div class="l">New Discovered</div></div>
+      <div class="led-card bad"><div class="n" id="stAnomaly">–</div><div class="l">Anomalies</div></div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- STEP 1: UPLOADS -->
+  <section class="panel" id="panelUpload">
+    <h2><span class="stepno">1</span> Load this week's files</h2>
+    <p class="desc">Upload your weekly report template, the Raw Field Cloud export, and the QA/QC workbook. Nothing leaves your browser — all parsing happens locally.</p>
+    <div class="upload-grid">
+      <label class="dropzone" id="dzWeekly">
+        <input type="file" id="fileWeekly" accept=".xlsx" />
+        <div class="dz-icon">01 · Template</div>
+        <div class="dz-title">Weekly Report</div>
+        <div class="dz-hint">The Feederwise GIS Enumeration Impact Report (.xlsx) you send out weekly</div>
+        <div class="dz-file" id="dzWeeklyFile"></div>
+      </label>
+      <label class="dropzone" id="dzRaw">
+        <input type="file" id="fileRaw" accept=".xlsx" />
+        <div class="dz-icon">02 · Raw Field Cloud</div>
+        <div class="dz-title">Raw Field Data</div>
+        <div class="dz-hint">Single-sheet export, one row per feeder with mapping/pole/consumer columns</div>
+        <div class="dz-file" id="dzRawFile"></div>
+      </label>
+      <label class="dropzone" id="dzQaqc">
+        <input type="file" id="fileQaqc" accept=".xlsx" />
+        <div class="dz-icon">03 · QA/QC</div>
+        <div class="dz-title">QA/QC Data</div>
+        <div class="dz-hint">Multi-sheet workbook — sheets named like "8-weekly_cleared_dt"</div>
+        <div class="dz-file" id="dzQaqcFile"></div>
+      </label>
+    </div>
+    <div class="actions-row">
+      <button class="primary" id="btnMerge" disabled>Run Merge</button>
+      <span class="empty-note" id="uploadHint">Load all three files to continue</span>
+    </div>
+    <div class="log" id="log" style="margin-top:16px; display:none;"></div>
+  </section>
+
+  <!-- STEP 2: NEW FEEDER REVIEW -->
+  <section class="panel disabled" id="panelNewFeeders">
+    <h2><span class="stepno">2</span> New feeders found in Raw Field data</h2>
+    <p class="desc">These feeders exist in this week's Raw Field Cloud export but not in your weekly report. Add the ones that should be tracked, discard the rest.</p>
+    <div id="newFeederList"></div>
+    <div class="actions-row">
+      <button class="ghost small" id="btnAddAll">Add all with blank details</button>
+      <button class="ghost small" id="btnDiscardAll">Discard all</button>
+      <span class="empty-note" id="newFeederSummary"></span>
+    </div>
+    <div class="actions-row">
+      <button class="primary" id="btnBuildGrid" disabled>Build Merged Report →</button>
+    </div>
+  </section>
+
+  <!-- STEP 3: ANOMALIES -->
+  <section class="panel disabled" id="panelAnomalies">
+    <h2><span class="stepno">3</span> Anomalies</h2>
+    <p class="desc">Feeders or QA/QC records that didn't line up cleanly. Review before exporting.</p>
+    <div class="anomaly-list" id="anomalyList"></div>
+  </section>
+
+  <!-- STEP 4: MERGED GRID -->
+  <section class="panel disabled" id="panelGrid">
+    <h2><span class="stepno">4</span> Merged weekly report — edit any figure</h2>
+    <p class="desc">Click any cell to edit. Amber outline = you edited it. Red = anomaly (no match found this week). Teal-tinted rows are newly added feeders.</p>
+    <div class="toolbar">
+      <input type="text" id="gridSearch" placeholder="Search feeder / cluster / district…" />
+      <span class="legend">
+        <span><span class="swatch" style="background:rgba(56,217,185,0.5)"></span> New row</span>
+        <span><span class="swatch" style="background:rgba(255,107,107,0.6)"></span> Anomaly</span>
+        <span><span class="swatch" style="border:1px solid var(--amber); background:transparent"></span> Edited</span>
+      </span>
+    </div>
+    <div class="table-wrap"><table class="grid" id="gridTable"></table></div>
+  </section>
+
+  <!-- STEP 5: EXPORT -->
+  <section class="panel disabled" id="panelExport">
+    <h2><span class="stepno">5</span> Export</h2>
+    <p class="desc">Downloads a copy of your original weekly report file with values merged in — formatting, merged cells, and column widths preserved.</p>
+    <div class="field" style="max-width:420px; margin-bottom:14px;">
+      <label>Output filename</label>
+      <input type="text" id="exportFilename" />
+    </div>
+    <div class="actions-row">
+      <button class="primary" id="btnExport">Download Merged Report (.xlsx)</button>
+    </div>
+    <div class="log" id="exportLog" style="margin-top:16px; display:none;"></div>
+  </section>
+
+</main>
+
+<footer>Feederwise Merge Console · runs entirely client-side · no data is uploaded anywhere</footer>
+
+<script>
+/* ============================================================
+   FEEDERWISE MERGE CONSOLE
+   Client-side merge of Raw Field Cloud + QA/QC data into the
+   weekly Feederwise GIS Enumeration Impact Report.
+   All parsing/merging happens in the browser via ExcelJS.
+   ============================================================ */
+
+(function () {
+  "use strict";
+
+  // ---------- Column layout of the weekly report (row 2 = headers, row 3+ = data) ----------
+  // idx is the 1-based Excel column number. source describes where the value comes from.
+  const COLUMNS = [
+    { key: "A",  idx: 1,  label: "CBO Cluster",                                   source: "identity" },
+    { key: "B",  idx: 2,  label: "Business District / Service Centre",            source: "identity" },
+    { key: "C",  idx: 3,  label: "Business Manager Name",                         source: "identity" },
+    { key: "D",  idx: 4,  label: "Total No. Of Feeders (33KV/11KV)",              source: "identity" },
+    { key: "E",  idx: 5,  label: "Old Feeder Name",                               source: "identity" },
+    { key: "F",  idx: 6,  label: "New Feeder Name",                               source: "identity", isKey: true },
+    { key: "G",  idx: 7,  label: "Feeder Type",                                   source: "identity" },
+    { key: "H",  idx: 8,  label: "Total Aligned DT",                              source: "qaqc:15" },
+    { key: "I",  idx: 9,  label: "Total Mapped DT by GIS for the week",           source: "raw:mappedWeek" },
+    { key: "J",  idx: 10, label: "Total Mapped DT by GIS till date",              source: "raw:mappedTotal" },
+    { key: "K",  idx: 11, label: "Total DT QA_QC Completed for the week",         source: "qaqc:8" },
+    { key: "L",  idx: 12, label: "Total DT QA_QC Completed till date",            source: "qaqc:7" },
+    { key: "M",  idx: 13, label: "Total New DTs Discovered",                      source: "computed:J-H" },
+    { key: "N",  idx: 14, label: "HT Poles captured for the week",                source: "raw:htWeek" },
+    { key: "O",  idx: 15, label: "HT Poles captured till date",                   source: "raw:htTotal" },
+    { key: "P",  idx: 16, label: "HT Feeder Completion Status",                   source: "manual" },
+    { key: "Q",  idx: 17, label: "Pending Completion Remark",                     source: "manual" },
+    { key: "R",  idx: 18, label: "LT Poles captured for the week",                source: "raw:ltWeek" },
+    { key: "S",  idx: 19, label: "LT Poles captured till date",                   source: "raw:ltTotal" },
+    { key: "T",  idx: 20, label: "Total consumer point captured for the week",    source: "raw:consWeek" },
+    { key: "U",  idx: 21, label: "Total Consumer Points Captured till date",      source: "raw:consTotal" },
+    { key: "V",  idx: 22, label: "Consumer/Customer Enumeration Completion Status", source: "manual" },
+    { key: "W",  idx: 23, label: "Total Building Footprints Cleared for the week", source: "qaqc:10" },
+    { key: "X",  idx: 24, label: "Total Building Footprints Cleared Till Date",   source: "qaqc:9" },
+    { key: "Y",  idx: 25, label: "Total Consumer Points cleared for the week",    source: "qaqc:4" },
+    { key: "Z",  idx: 26, label: "Total Consumer Points cleared till date",       source: "qaqc:3" },
+    { key: "AA", idx: 27, label: "Total Customer Points cleared for the week",    source: "qaqc:2" },
+    { key: "AB", idx: 28, label: "Total Customer Points cleared till date",       source: "qaqc:1" },
+    { key: "AC", idx: 29, label: "Total Not Connected Consumer points cleared for the week", source: "qaqc:6" },
+    { key: "AD", idx: 30, label: "Total Not Connected Consumer points cleared till date", source: "qaqc:5" },
+    { key: "AE", idx: 31, label: "Total Onboading Points captured for the week",  source: "qaqc:20" },
+    { key: "AF", idx: 32, label: "Total Onboading Points captured till date",     source: "qaqc:19" },
+    { key: "AG", idx: 33, label: "Total Account in Multiple Locations for the Week", source: "qaqc:22" },
+    { key: "AH", idx: 34, label: "Total Account in Multiple Location Till date",  source: "qaqc:21" },
+    { key: "AI", idx: 35, label: "Total New Customers",                          source: "manual" },
+    { key: "AJ", idx: 36, label: "Total Excess Customers",                       source: "manual" },
+    { key: "AK", idx: 37, label: "Total Untraceble",                             source: "manual" },
+    { key: "AL", idx: 38, label: "Total No. Issue Log Submitted",                source: "manual" },
+    { key: "AM", idx: 39, label: "Total No. Assigned to RPU",                    source: "manual" },
+    { key: "AN", idx: 40, label: "Total Amount of Recovery Billed",              source: "manual" },
+    { key: "AO", idx: 41, label: "Total Amount of Recovery Paid",                source: "manual" },
+  ];
+  const COL_BY_KEY = Object.fromEntries(COLUMNS.map((c) => [c.key, c]));
+
+  // Sheets in the QA/QC workbook that have no feeder-name column and should be skipped
+  // when scanning for "feeder mentioned in QA/QC but missing from report" anomalies.
+  const QAQC_NO_FEEDER_SHEETS = new Set([11, 12, 13, 14]);
+
+  const NAME_COLS = ["feeder_full_name", "Feeder_name"];
+  const VALUE_COLS = ["data_cleared", "building_cleared", "Total_dt_Aligned", "reported_issue"];
+
+  // ---------- App state ----------
+  const state = {
+    templateWorkbook: null,
+    templateSheet: null,
+    templateFileName: "",
+    headerRow: 2,
+    dataStartRow: 3,
+    lastDataRow: 2,
+    feederIndex: new Map(),      // feederName -> rowNumber
+    existingRows: [],            // { type:'existing', rowNumber, feederName, values:{}, anomalyCols:Set }
+    newRowsData: [],             // { type:'new', id, feederName, values:{}, anomalyCols:Set, status }
+    rawMap: new Map(),
+    rawFileName: "",
+    qaqcMaps: {},                // sheetNumber -> Map(name -> value)
+    qaqcFileName: "",
+    newFeederCandidates: [],     // { name, raw, status: pending|added|discarded }
+    anomalies: [],               // { type, message }
+    edits: new Map(),            // "type:id:colKey" -> value
+    distinctClusters: [],
+    distinctDistricts: [],
+    distinctFeederTypes: [],
+  };
+
+  // ---------- small utils ----------
+  const $ = (sel) => document.querySelector(sel);
+  const $all = (sel) => Array.from(document.querySelectorAll(sel));
+  const logEl = $("#log");
+
+  function log(msg, level) {
+    logEl.style.display = "block";
+    const span = document.createElement("div");
+    span.className = level || "";
+    span.textContent = msg;
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function clearLog() {
+    logEl.innerHTML = "";
+    logEl.style.display = "none";
+  }
+
+  function toNumberOrNull(v) {
+    if (v === null || v === undefined || v === "") return null;
+    if (typeof v === "number") return v;
+    const n = Number(String(v).trim());
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function cellText(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object" && v.result !== undefined) return v.result; // formula cell
+    return v;
+  }
+
+  function uid() {
+    return "n" + Math.random().toString(36).slice(2, 10);
+  }
+
+  // ============================================================
+  // FILE LOADING
+  // ============================================================
+  function setupDropzone(zoneId, inputId, fileLabelId, onLoaded) {
+    const zone = $(zoneId);
+    const input = $(inputId);
+    zone.addEventListener("click", (e) => {
+      if (e.target !== input) input.click();
+    });
+    zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+    zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+    zone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      zone.classList.remove("drag");
+      if (e.dataTransfer.files.length) {
+        input.files = e.dataTransfer.files;
+        input.dispatchEvent(new Event("change"));
+      }
+    });
+    input.addEventListener("change", async () => {
+      const file = input.files[0];
+      if (!file) return;
+      $(fileLabelId).textContent = file.name;
+      zone.classList.add("filled");
+      await onLoaded(file);
+      checkReadyToMerge();
+    });
+  }
+
+  let filesLoaded = { weekly: false, raw: false, qaqc: false };
+
+  function checkReadyToMerge() {
+    const ready = filesLoaded.weekly && filesLoaded.raw && filesLoaded.qaqc;
+    $("#btnMerge").disabled = !ready;
+    $("#uploadHint").textContent = ready
+      ? "All files loaded — ready to merge."
+      : "Load all three files to continue";
+  }
+
+  async function readWorkbook(file) {
+    const buf = await file.arrayBuffer();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+    return wb;
+  }
+
+  setupDropzone("#dzWeekly", "#fileWeekly", "#dzWeeklyFile", async (file) => {
+    clearLog();
+    log("Reading weekly report template…");
+    try {
+      const wb = await readWorkbook(file);
+      state.templateWorkbook = wb;
+      state.templateSheet = wb.worksheets[0];
+      state.templateFileName = file.name;
+      $("#exportFilename").value = file.name.replace(/\.xlsx$/i, "") + "_MERGED.xlsx";
+      log(`Loaded "${file.name}" — sheet "${wb.worksheets[0].name}", ${wb.worksheets[0].rowCount} rows.`, "ok");
+      filesLoaded.weekly = true;
+    } catch (e) {
+      log("Failed to read weekly report: " + e.message, "err");
+      filesLoaded.weekly = false;
+    }
+  });
+
+  setupDropzone("#dzRaw", "#fileRaw", "#dzRawFile", async (file) => {
+    clearLog();
+    log("Reading Raw Field Cloud data…");
+    try {
+      const wb = await readWorkbook(file);
+      state.rawFileName = file.name;
+      state._rawWorkbook = wb;
+      log(`Loaded "${file.name}" — sheet "${wb.worksheets[0].name}", ${wb.worksheets[0].rowCount} rows.`, "ok");
+      filesLoaded.raw = true;
+    } catch (e) {
+      log("Failed to read Raw Field Cloud data: " + e.message, "err");
+      filesLoaded.raw = false;
+    }
+  });
+
+  setupDropzone("#dzQaqc", "#fileQaqc", "#dzQaqcFile", async (file) => {
+    clearLog();
+    log("Reading QA/QC workbook…");
+    try {
+      const wb = await readWorkbook(file);
+      state.qaqcFileName = file.name;
+      state._qaqcWorkbook = wb;
+      log(`Loaded "${file.name}" — ${wb.worksheets.length} sheets.`, "ok");
+      filesLoaded.qaqc = true;
+    } catch (e) {
+      log("Failed to read QA/QC data: " + e.message, "err");
+      filesLoaded.qaqc = false;
+    }
+  });
+
+  // ============================================================
+  // PARSING
+  // ============================================================
+  function parseWeeklyTemplate() {
+    const ws = state.templateSheet;
+    // sanity-check header row
+    const f2 = ws.getRow(2).getCell(6).value;
+    if (!f2 || !String(f2).toLowerCase().includes("feeder")) {
+      log('Warning: cell F2 does not look like "New Feeder Name" — column layout may differ from expected. Proceeding with standard layout anyway.', "warn");
+    }
+
+    state.feederIndex = new Map();
+    state.existingRows = [];
+    let lastDataRow = state.dataStartRow - 1;
+    let curCluster = "", curDistrict = "";
+    const clusters = new Set(), districts = new Set(), types = new Set();
+
+    ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      if (rowNumber < state.dataStartRow) return;
+      const name = cellText(row.getCell(6).value);
+      const a = cellText(row.getCell(1).value);
+      const b = cellText(row.getCell(2).value);
+      if (a) curCluster = a; if (a) clusters.add(a);
+      if (b) curDistrict = b; if (b) districts.add(b);
+      const g = cellText(row.getCell(7).value);
+      if (g) types.add(g);
+      if (!name || String(name).trim() === "") return;
+      const cleanName = String(name).trim();
+      state.feederIndex.set(cleanName, rowNumber);
+      lastDataRow = rowNumber;
+
+      const values = {};
+      COLUMNS.forEach((col) => {
+        values[col.key] = cellText(row.getCell(col.idx).value);
+      });
+      values.A = values.A || curCluster;
+      values.B = values.B || curDistrict;
+      state.existingRows.push({
+        type: "existing",
+        rowNumber,
+        feederName: cleanName,
+        values,
+        anomalyCols: new Set(),
+      });
+    });
+
+    state.lastDataRow = lastDataRow;
+    state.distinctClusters = [...clusters].sort();
+    state.distinctDistricts = [...districts].sort();
+    state.distinctFeederTypes = [...types].sort();
+    log(`Weekly report: ${state.existingRows.length} existing feeders found (data rows ${state.dataStartRow}–${lastDataRow}).`, "ok");
+  }
+
+  function parseRawFile() {
+    const ws = state._rawWorkbook.worksheets[0];
+    const map = new Map();
+    ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      if (rowNumber < 2) return;
+      const name = cellText(row.getCell(1).value);
+      if (!name || String(name).trim() === "") return;
+      map.set(String(name).trim(), {
+        mappedWeek: toNumberOrNull(cellText(row.getCell(2).value)),
+        mappedTotal: toNumberOrNull(cellText(row.getCell(3).value)),
+        htWeek: toNumberOrNull(cellText(row.getCell(4).value)),
+        htTotal: toNumberOrNull(cellText(row.getCell(5).value)),
+        ltWeek: toNumberOrNull(cellText(row.getCell(6).value)),
+        ltTotal: toNumberOrNull(cellText(row.getCell(7).value)),
+        consWeek: toNumberOrNull(cellText(row.getCell(8).value)),
+        consTotal: toNumberOrNull(cellText(row.getCell(9).value)),
+        issueWeek: toNumberOrNull(cellText(row.getCell(10).value)),
+        issueTotal: toNumberOrNull(cellText(row.getCell(11).value)),
+      });
+    });
+    state.rawMap = map;
+    log(`Raw Field Cloud data: ${map.size} feeders parsed.`, "ok");
+  }
+
+  function parseSheetToMap(ws) {
+    const header = [];
+    ws.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      header[colNumber] = cell.value ? String(cell.value).trim() : "";
+    });
+    let nameCol = -1, valueCol = -1;
+    header.forEach((h, i) => {
+      if (NAME_COLS.includes(h)) nameCol = i;
+      if (VALUE_COLS.includes(h)) valueCol = i;
+    });
+    const map = new Map();
+    if (nameCol === -1 || valueCol === -1) return map;
+    ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      if (rowNumber < 2) return;
+      const name = cellText(row.getCell(nameCol).value);
+      if (!name || String(name).trim() === "") return;
+      map.set(String(name).trim(), toNumberOrNull(cellText(row.getCell(valueCol).value)));
+    });
+    return map;
+  }
+
+  function parseQaqcFile() {
+    state.qaqcMaps = {};
+    let parsedSheets = 0;
+    for (const ws of state._qaqcWorkbook.worksheets) {
+      const m = ws.name.match(/^(\d+)-/);
+      if (!m) continue;
+      const num = parseInt(m[1], 10);
+      state.qaqcMaps[num] = parseSheetToMap(ws);
+      parsedSheets++;
+    }
+    log(`QA/QC data: ${parsedSheets} numbered sheets parsed.`, "ok");
+    [8, 7, 10, 9, 4, 3, 2, 1, 6, 5, 19, 21, 15].forEach((n) => {
+      if (!state.qaqcMaps[n]) log(`  Note: sheet "${n}-…" not found in QA/QC workbook — related columns will default to 0 for every feeder.`, "warn");
+    });
+    [20, 22].forEach((n) => {
+      if (!state.qaqcMaps[n]) log(`  Note: sheet "${n}-…" not present — weekly Onboarding/Multiple-Locations figures will be set to 0 (assumed no activity this week).`, "warn");
+    });
+  }
+
+  // ============================================================
+  // MERGE LOGIC
+  // ============================================================
+  function qaqcLookup(sheetNum, feederName) {
+    const map = state.qaqcMaps[sheetNum];
+    if (!map) return { value: null, found: false, sheetMissing: true };
+    if (!map.has(feederName)) return { value: null, found: false, sheetMissing: false };
+    return { value: map.get(feederName), found: true, sheetMissing: false };
+  }
+
+  function computeMetricsForFeeder(feederName) {
+    // returns { values: partial column->value, anomalyCols: Set }
+    const values = {};
+    const anomalyCols = new Set();
+    const raw = state.rawMap.get(feederName);
+
+    const RAW_FIELDS = { I: "mappedWeek", J: "mappedTotal", N: "htWeek", O: "htTotal", R: "ltWeek", S: "ltTotal", T: "consWeek", U: "consTotal" };
+    Object.entries(RAW_FIELDS).forEach(([colKey, field]) => {
+      if (raw && raw[field] !== null && raw[field] !== undefined) {
+        values[colKey] = raw[field];
+      } else {
+        values[colKey] = "Not Found";
+        anomalyCols.add(colKey);
+      }
+    });
+
+    // Total Aligned DT (sheet 15) — original formula defaults to 0, not "Not Found"
+    const aligned = qaqcLookup(15, feederName);
+    values.H = aligned.found ? aligned.value : 0;
+
+    // General QA/QC sheets: your XLOOKUP formula defaults to "0" on a miss (not an error) —
+    // most feeders simply had no clearance activity in a given sheet that week/period, so this
+    // is expected business-as-usual and is NOT flagged as an anomaly.
+    const QAQC_FIELDS = { K: 8, L: 7, W: 10, X: 9, Y: 4, Z: 3, AA: 2, AB: 1, AC: 6, AD: 5, AF: 19, AH: 21 };
+    Object.entries(QAQC_FIELDS).forEach(([colKey, sheetNum]) => {
+      const r = qaqcLookup(sheetNum, feederName);
+      values[colKey] = r.found ? r.value : 0;
+    });
+
+    // Sheets 20 & 22 don't exist this week by design -> 0, no anomaly
+    values.AE = qaqcLookup(20, feederName).found ? qaqcLookup(20, feederName).value : 0;
+    values.AG = qaqcLookup(22, feederName).found ? qaqcLookup(22, feederName).value : 0;
+
+    // Total New DTs Discovered = J - H
+    const jNum = toNumberOrNull(values.J);
+    const hNum = toNumberOrNull(values.H);
+    if (jNum !== null && hNum !== null) {
+      values.M = jNum - hNum;
+    } else {
+      values.M = "Not Found";
+      anomalyCols.add("M");
+    }
+
+    return { values, anomalyCols };
+  }
+
+  function runMerge() {
+    if (!state.templateWorkbook || !state._rawWorkbook || !state._qaqcWorkbook) return;
+    clearLog();
+    log("Parsing files…");
+    parseWeeklyTemplate();
+    parseRawFile();
+    parseQaqcFile();
+
+    log("Cross-referencing feeders and computing figures…");
+    let anomalyCount = 0;
+    state.existingRows.forEach((row) => {
+      const { values, anomalyCols } = computeMetricsForFeeder(row.feederName);
+      Object.assign(row.values, values);
+      row.anomalyCols = anomalyCols;
+      anomalyCols.forEach((colKey) => {
+        state.anomalies.push({
+          type: "metric-missing",
+          message: `${row.feederName} — no match for "${COL_BY_KEY[colKey].label}" this week (row ${row.rowNumber}).`,
+        });
+        anomalyCount++;
+      });
+    });
+
+    // new feeders = in raw but not in weekly report
+    state.newFeederCandidates = [];
+    for (const [name, raw] of state.rawMap.entries()) {
+      if (!state.feederIndex.has(name)) {
+        state.newFeederCandidates.push({ name, raw, status: "pending" });
+      }
+    }
+
+    // data-quality anomaly: feeder named in QA/QC sheets but not found anywhere (weekly report or raw data)
+    Object.entries(state.qaqcMaps).forEach(([numStr, map]) => {
+      const num = parseInt(numStr, 10);
+      if (QAQC_NO_FEEDER_SHEETS.has(num)) return;
+      for (const name of map.keys()) {
+        if (!state.feederIndex.has(name) && !state.rawMap.has(name)) {
+          state.anomalies.push({
+            type: "qaqc-orphan",
+            message: `"${name}" appears in QA/QC sheet ${num} but isn't in the weekly report or Raw Field data — possible name mismatch.`,
+          });
+          anomalyCount++;
+        }
+      }
+    });
+
+    log(`Done. ${state.existingRows.length} matched, ${state.newFeederCandidates.length} new feeders discovered, ${anomalyCount} anomalies flagged.`, "ok");
+
+    updateStatusStrip();
+    renderNewFeederPanel();
+    renderAnomalyPanel();
+    $("#panelNewFeeders").classList.remove("disabled");
+    $("#panelAnomalies").classList.remove("disabled");
+  }
+
+  function updateStatusStrip() {
+    $("#stMatched").textContent = state.existingRows.length;
+    $("#stNew").textContent = state.newFeederCandidates.length;
+    $("#stAnomaly").textContent = state.anomalies.length;
+  }
+
+  // ============================================================
+  // NEW FEEDER REVIEW
+  // ============================================================
+  function renderNewFeederPanel() {
+    const list = $("#newFeederList");
+    list.innerHTML = "";
+    if (state.newFeederCandidates.length === 0) {
+      list.innerHTML = '<p class="empty-note">No new feeders found — Raw Field data matches your weekly report feeder list.</p>';
+      $("#btnBuildGrid").disabled = false;
+      updateNewFeederSummary();
+      return;
+    }
+    state.newFeederCandidates.forEach((cand, i) => {
+      const row = document.createElement("div");
+      row.className = "feeder-row";
+      row.dataset.idx = i;
+      row.innerHTML = `
+        <span class="fname">${cand.name}</span>
+        <span class="fmeta">Mapped DT total: ${cand.raw.mappedTotal ?? "–"} · HT total: ${cand.raw.htTotal ?? "–"} · Consumer total: ${cand.raw.consTotal ?? "–"}</span>
+        <span class="badge ${cand.status}" data-role="badge">${cand.status}</span>
+        <button class="ghost small" data-role="add">Add…</button>
+        <button class="danger small" data-role="discard">Discard</button>
+      `;
+      list.appendChild(row);
+
+      row.querySelector('[data-role="add"]').addEventListener("click", () => toggleInlineForm(row, i));
+      row.querySelector('[data-role="discard"]').addEventListener("click", () => {
+        cand.status = "discarded";
+        renderNewFeederPanel();
+      });
+    });
+    updateNewFeederSummary();
+  }
+
+  function toggleInlineForm(row, idx) {
+    const existing = row.querySelector(".inline-form");
+    if (existing) { existing.remove(); return; }
+    const clusterOpts = state.distinctClusters.map((c) => `<option value="${c}">`).join("");
+    const districtOpts = state.distinctDistricts.map((c) => `<option value="${c}">`).join("");
+    const typeOpts = state.distinctFeederTypes.map((c) => `<option value="${c}">`).join("");
+
+    const form = document.createElement("div");
+    form.className = "inline-form";
+    form.innerHTML = `
+      <div class="field"><label>CBO Cluster</label><input list="dl-cluster-${idx}" id="f-cluster-${idx}"/><datalist id="dl-cluster-${idx}">${clusterOpts}</datalist></div>
+      <div class="field"><label>Business District</label><input list="dl-district-${idx}" id="f-district-${idx}"/><datalist id="dl-district-${idx}">${districtOpts}</datalist></div>
+      <div class="field"><label>Business Manager Name</label><input id="f-manager-${idx}"/></div>
+      <div class="field"><label>Total No. of Feeders</label><input type="number" id="f-total-${idx}"/></div>
+      <div class="field"><label>Old Feeder Name</label><input id="f-old-${idx}"/></div>
+      <div class="field"><label>Feeder Type</label><input list="dl-type-${idx}" id="f-type-${idx}"/><datalist id="dl-type-${idx}">${typeOpts}</datalist></div>
+      <div class="field" style="align-self:end;"><button class="primary small" data-role="confirm">Confirm Add</button></div>
+    `;
+    row.appendChild(form);
+    form.querySelector('[data-role="confirm"]').addEventListener("click", () => {
+      const cand = state.newFeederCandidates[idx];
+      cand.status = "added";
+      cand.formData = {
+        A: form.querySelector(`#f-cluster-${idx}`).value.trim(),
+        B: form.querySelector(`#f-district-${idx}`).value.trim(),
+        C: form.querySelector(`#f-manager-${idx}`).value.trim(),
+        D: form.querySelector(`#f-total-${idx}`).value.trim(),
+        E: form.querySelector(`#f-old-${idx}`).value.trim(),
+        G: form.querySelector(`#f-type-${idx}`).value.trim(),
+      };
+      renderNewFeederPanel();
+    });
+  }
+
+  function updateNewFeederSummary() {
+    const total = state.newFeederCandidates.length;
+    const added = state.newFeederCandidates.filter((c) => c.status === "added").length;
+    const discarded = state.newFeederCandidates.filter((c) => c.status === "discarded").length;
+    const pending = total - added - discarded;
+    $("#newFeederSummary").textContent = total
+      ? `${added} to add · ${discarded} discarded · ${pending} still pending`
+      : "";
+    $("#btnBuildGrid").disabled = pending > 0;
+  }
+
+  $("#btnAddAll").addEventListener("click", () => {
+    state.newFeederCandidates.forEach((c) => {
+      if (c.status === "pending") {
+        c.status = "added";
+        c.formData = { A: "", B: "", C: "", D: "", E: "", G: "" };
+      }
+    });
+    renderNewFeederPanel();
+  });
+
+  $("#btnDiscardAll").addEventListener("click", () => {
+    state.newFeederCandidates.forEach((c) => { if (c.status === "pending") c.status = "discarded"; });
+    renderNewFeederPanel();
+  });
+
+  $("#btnBuildGrid").addEventListener("click", () => {
+    // materialize "added" candidates into newRowsData
+    state.newRowsData = [];
+    state.newFeederCandidates.filter((c) => c.status === "added").forEach((c) => {
+      const { values, anomalyCols } = computeMetricsForFeeder(c.name);
+      const full = { A: "", B: "", C: "", D: "", E: "", F: c.name, G: "", P: "", Q: "", V: "", AI: "", AJ: "", AK: "", AL: "", AM: "", AN: "", AO: "" };
+      Object.assign(full, values, c.formData || {});
+      full.F = c.name;
+      state.newRowsData.push({
+        type: "new",
+        id: uid(),
+        feederName: c.name,
+        values: full,
+        anomalyCols,
+        status: "added",
+      });
+    });
+    log(`${state.newRowsData.length} new feeder row(s) will be appended to the report.`, "ok");
+    $("#panelGrid").classList.remove("disabled");
+    $("#panelExport").classList.remove("disabled");
+    renderGrid();
+  });
+
+  // ============================================================
+  // ANOMALIES PANEL
+  // ============================================================
+  function renderAnomalyPanel() {
+    const list = $("#anomalyList");
+    list.innerHTML = "";
+    if (state.anomalies.length === 0) {
+      list.innerHTML = '<p class="empty-note">No anomalies — everything matched cleanly.</p>';
+      return;
+    }
+    state.anomalies.slice(0, 300).forEach((a) => {
+      const div = document.createElement("div");
+      div.className = "anomaly-item";
+      div.innerHTML = `<b>[${a.type}]</b> ${a.message}`;
+      list.appendChild(div);
+    });
+    if (state.anomalies.length > 300) {
+      const div = document.createElement("div");
+      div.className = "anomaly-item";
+      div.textContent = `…and ${state.anomalies.length - 300} more.`;
+      list.appendChild(div);
+    }
+  }
+
+  // ============================================================
+  // EDITABLE GRID
+  // ============================================================
+  function allRows() {
+    return [...state.existingRows, ...state.newRowsData];
+  }
+
+  function editKey(row, colKey) {
+    const id = row.type === "existing" ? row.rowNumber : row.id;
+    return `${row.type}:${id}:${colKey}`;
+  }
+
+  function getFinal(row, colKey) {
+    const key = editKey(row, colKey);
+    if (state.edits.has(key)) return state.edits.get(key);
+    return row.values[colKey] !== undefined ? row.values[colKey] : "";
+  }
+
+  function renderGrid() {
+    const table = $("#gridTable");
+    table.innerHTML = "";
+    const thead = document.createElement("thead");
+    const trh = document.createElement("tr");
+    COLUMNS.forEach((col, i) => {
+      const th = document.createElement("th");
+      th.textContent = col.label;
+      if (i === 0) th.classList.add("group1");
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    allRows().forEach((row) => {
+      const tr = document.createElement("tr");
+      if (row.type === "new") tr.classList.add("new-row");
+      tr.dataset.feeder = row.feederName.toLowerCase();
+      tr.dataset.cluster = (getFinal(row, "A") || "").toLowerCase();
+      tr.dataset.district = (getFinal(row, "B") || "").toLowerCase();
+
+      COLUMNS.forEach((col, i) => {
+        const td = document.createElement("td");
+        const val = getFinal(row, col.key);
+        td.textContent = val === null || val === undefined ? "" : val;
+        if (i === 0) td.classList.add("sticky-col");
+        if (row.anomalyCols.has(col.key) && !state.edits.has(editKey(row, col.key))) td.classList.add("anomaly");
+        if (state.edits.has(editKey(row, col.key))) td.classList.add("edited");
+        td.contentEditable = "true";
+        td.addEventListener("blur", () => {
+          const newVal = td.textContent.trim();
+          const key = editKey(row, col.key);
+          const original = row.values[col.key];
+          if (newVal === String(original === null || original === undefined ? "" : original)) {
+            state.edits.delete(key);
+            td.classList.remove("edited");
+          } else {
+            state.edits.set(key, newVal);
+            td.classList.add("edited");
+            td.classList.remove("anomaly");
+          }
+        });
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+  }
+
+  $("#gridSearch").addEventListener("input", (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    $all("#gridTable tbody tr").forEach((tr) => {
+      const match = !q || tr.dataset.feeder.includes(q) || tr.dataset.cluster.includes(q) || tr.dataset.district.includes(q);
+      tr.style.display = match ? "" : "none";
+    });
+  });
+
+  // ============================================================
+  // EXPORT
+  // ============================================================
+  function coerceForWrite(colKey, value) {
+    if (value === "Not Found" || value === "" || value === null || value === undefined) return value === "" ? null : value;
+    const identityText = ["A", "B", "C", "E", "F", "G"].includes(colKey);
+    const manualText = ["P", "Q", "V"].includes(colKey);
+    if (identityText || manualText) return value;
+    const n = toNumberOrNull(value);
+    return n !== null ? n : value;
+  }
+
+  async function exportReport() {
+    const exportLog = $("#exportLog");
+    exportLog.style.display = "block";
+    exportLog.innerHTML = "";
+    const say = (m) => { const d = document.createElement("div"); d.textContent = m; exportLog.appendChild(d); };
+
+    say("Writing values into existing rows…");
+    const ws = state.templateSheet;
+
+    state.existingRows.forEach((row) => {
+      const excelRow = ws.getRow(row.rowNumber);
+      COLUMNS.forEach((col) => {
+        const final = getFinal(row, col.key);
+        excelRow.getCell(col.idx).value = coerceForWrite(col.key, final);
+      });
+    });
+
+    say(`Appending ${state.newRowsData.length} new feeder row(s), cloning formatting from row ${state.lastDataRow}…`);
+    const styleSourceRow = ws.getRow(state.lastDataRow);
+    let nextRowNum = state.lastDataRow + 1;
+    // find first truly empty row at/after lastDataRow+1 (skip any leftover pre-styled blanks by just using them directly)
+    state.newRowsData.forEach((row) => {
+      const excelRow = ws.getRow(nextRowNum);
+      COLUMNS.forEach((col) => {
+        const srcCell = styleSourceRow.getCell(col.idx);
+        const dstCell = excelRow.getCell(col.idx);
+        dstCell.style = srcCell.style;
+        const final = getFinal(row, col.key);
+        dstCell.value = coerceForWrite(col.key, final);
+      });
+      excelRow.height = styleSourceRow.height;
+      nextRowNum++;
+    });
+
+    say("Building .xlsx file…");
+    const buf = await state.templateWorkbook.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = $("#exportFilename").value.trim() || "Feederwise_Merged_Report.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    say("Done — file downloaded.");
+  }
+
+  // ============================================================
+  // WIRE UP TOP-LEVEL BUTTONS
+  // ============================================================
+  $("#btnMerge").addEventListener("click", runMerge);
+  $("#btnExport").addEventListener("click", exportReport);
+})();
+
+</script>
+</body>
+</html>
